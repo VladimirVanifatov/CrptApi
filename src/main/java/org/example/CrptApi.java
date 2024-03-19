@@ -2,6 +2,8 @@ package org.example;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.Data;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -12,7 +14,9 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
+
 public class CrptApi {
+    private static final Logger LOGGER = LoggerFactory.getLogger(CrptApi.class);
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper;
     private AtomicInteger counterRequest = new AtomicInteger(0);
@@ -26,16 +30,17 @@ public class CrptApi {
         this.limit = requestLimit;
         this.httpClient = HttpClient.newHttpClient();
         this.objectMapper = new ObjectMapper();
-
     }
 
     public void createDocument(Document document, String signature) throws InterruptedException {
         if (localDateTime == null) {
             localDateTime = LocalDateTime.now();
         }
+
         //Если указанное время не вышло и лимит запросов не превышен, можем обращаться к API
         if (LocalDateTime.now().isBefore(localDateTime.plusNanos(time)) && counterRequest.get() != limit) {
             counterRequest.incrementAndGet();
+
             //Логика создания документа
             try {
                 String requestBody = objectMapper.writeValueAsString(document);
@@ -51,16 +56,17 @@ public class CrptApi {
                 HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
                 if (response.statusCode() == 200) {
-                    System.out.println("Документ создан");
+                    LOGGER.info("Документ создан");
                 } else {
-                    System.err.println("Ошибка при создании документа. HTTP-статус: " + response.statusCode());
+                    LOGGER.error("Ошибка при создании документа. HTTP-статус: " + response.statusCode());
                 }
             } catch (Exception e) {
-                System.err.println("Ошибка при отправке запроса: " + e.getMessage());
+                LOGGER.error("Ошибка при отправке запроса: " + e.getMessage());
             }
-        //Если лимит запросов превышен, спим
+
+            //Если лимит запросов превышен, спим
         } else {
-            System.err.println("Превышен лимит запросов");
+            LOGGER.info("Превышен лимит запросов. Ожидайте окончания блокировки");
             while (LocalDateTime.now().isBefore(localDateTime.plusNanos(time))) {
                 Thread.sleep(1000);
             }
@@ -106,9 +112,10 @@ public class CrptApi {
 
 
     public static void main(String[] args) throws InterruptedException {
-        CrptApi crptApi = new CrptApi(TimeUnit.MINUTES, 1);
         Document document = new Document();
-        while (true) {
+        CrptApi crptApi = new CrptApi(TimeUnit.MINUTES, 5);
+        //Проверка работы метода
+        for (int i = 0; i < 30; i++) {
             crptApi.createDocument(document, "signature");
         }
     }
